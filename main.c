@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "compile.h"
 #include "getSource.h"
 
 int main() {
@@ -9,6 +10,10 @@ int main() {
   scanf("%s", fileName);
 
   if (!openSource(fileName)) return 1;
+
+  if (compile()) {
+    printf("コンパイル成功\n");
+  }
 
   closeSource();
 
