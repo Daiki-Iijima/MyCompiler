@@ -6,6 +6,9 @@
 #define MAXLINE 120 /*	1行の最大文字数	*/
 #define TAB 5;
 
+#define STR(var) \
+#var /*	引数にした変数を変数名を示す文字リテラルとして返すマクロ */
+
 static FILE *fpi;          /*	ソースファイル	*/
 static FILE *fptex;        /*	LaTex出力ファイル	*/
 static char line[MAXLINE]; /*	１行分の入力バッファー	*/
@@ -16,6 +19,47 @@ static char ch;       /*	最後に読んだ文字	*/
 static int spaces;  /*	そのトークンの前のスペース個数	*/
 static int CR;      /*	そのトークンの前のCR(改行)の個数	*/
 static int printed; /*	トークンの文字は印字済みか	*/
+
+/*	「予約語or記号』と名前(KeyId)のペア	*/
+struct keyWd {
+  char *word;
+  KeyId keyId;
+};
+
+/*	「予約語or記号』と名前(KeyId)のペアの表	*/
+static struct keyWd KeyWdT[] = {
+	{"begin",Begin},
+	{"end",End},
+	{"if",If},
+	{"then",Then},
+	{"while",While},
+	{"do",Do},
+	{"return",Ret},
+	{"function",Func},
+	{"var",Var},
+	{"const",Const},
+	{"odd",Odd},
+	{"write",Write},
+	{"writeln",WriteLn},
+	{"$dummy1",end_of_KeyWd},
+	{"+",Plus},
+	{"-",Minus},
+	{"*",Mult},
+	{"/",Div},
+	{"(",Lparen},
+	{")",Rparen},
+	{"=",Equal},
+	{"<",Lss},
+	{">",Gtr},
+	{"<>",NotEq},
+	{"<=",LssEq},
+	{">=",GtrEq},
+	{",",Comma},
+	{".",Period},
+	{";",Semicolon},
+	{":=",Assign},
+	{"$dummy2",end_of_KeySym},
+};
 
 /*	ソースファイルのOpen、.texファイルの作成	*/
 int openSource(char fileName[]) {
@@ -47,8 +91,64 @@ void closeSource() {
   printf("ファイルを正常に閉じました。\n");
 }
 
+static KeyId charClassT[256]; /*	文字の種類を示す表	*/
+
+/*	文字表のデバッグ表示	*/
+static void DebugCharClassT() {
+  int i;
+  for (i = 0; i < 256; i++) {
+    if (charClassT[i] == 35)
+      printf("%d番目:%s\n", i, "letter");
+    else if (charClassT[i] == 36)
+      printf("%d番目:%s\n", i, "digit");
+    else if (charClassT[i] == 38)
+      printf("%d番目:%s\n", i, "other");
+    else
+      printf("%d番目:%u\n", i, charClassT[i]);
+  }
+}
+
 /*	文字の種類を表す表を作る	*/
-static void initCharClassT() {}
+static void initCharClassT() {
+  int i;
+
+  for (i = 0; i < 256; i++) {
+    charClassT[i] = others;
+  }
+
+  /*	ASCllコードの文字コードで登録	*/
+  for (i = '0'; i <= '9'; i++) {
+    charClassT[i] = digit;
+  }
+  for (i = 'A'; i <= 'Z'; i++) {
+    charClassT[i] = letter;
+  }
+  for (i = 'a'; i <= 'z'; i++) {
+    charClassT[i] = letter;
+  }
+
+  /*	演算子の登録	*/
+  /*	四則演算子	*/
+  charClassT['+'] = Plus;
+  charClassT['-'] = Minus;
+  charClassT['*'] = Mult;
+  charClassT['/'] = Div;
+  /*	かっこ */
+  charClassT['('] = Lparen;
+  charClassT[')'] = Rparen;
+  /*	代入、比較演算子	*/
+  charClassT['='] = Equal;
+  charClassT['<'] = Lss;
+  charClassT['>'] = Gtr;
+  /*	その他の記号	*/
+  charClassT[','] = Comma;
+  charClassT['.'] = Period;
+  charClassT[';'] = Semicolon;
+  charClassT[':'] = colon;
+
+  /*	デバッグ	*/
+  DebugCharClassT();
+}
 
 /*	テーブルの初期設定、texファイルの初期設定	*/
 void initSource() {
@@ -99,7 +199,7 @@ Token nextToken() {
     } else if (ch == '\t') {
       spaces += TAB;
     } else if (ch == '\n') {
-      printf("%d行目の空白数:%d\n",CR, spaces);
+      printf("%d行目の空白数:%d\n", CR, spaces);
       spaces = 0;
       CR++;
     } else {
