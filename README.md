@@ -3,5 +3,5 @@
 
 # コンパイル方法
 ```
-gcc -o myComp main.c getSource.c
+gcc -o myComp main.c getSource.c compile.c
 ```
