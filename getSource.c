@@ -4,6 +4,7 @@
 #include "getSource.h"
 
 #define MAXLINE 120 /*	1行の最大文字数	*/
+#define MAXNUM 30   /*	定数の最大桁数	*/
 #define TAB 5;
 
 #define STR(var) \
@@ -16,9 +17,10 @@ static char line[MAXLINE]; /*	１行分の入力バッファー	*/
 static int lineIndex; /*	次に読む文字の位置	*/
 static char ch;       /*	最後に読んだ文字	*/
 
-static int spaces;  /*	そのトークンの前のスペース個数	*/
-static int CR;      /*	そのトークンの前のCR(改行)の個数	*/
-static int printed; /*	トークンの文字は印字済みか	*/
+static Token cToken; /*	最後に読んだトークン	*/
+static int spaces;   /*	そのトークンの前のスペース個数	*/
+static int CR;       /*	そのトークンの前のCR(改行)の個数	*/
+static int printed;  /*	トークンの文字は印字済みか	*/
 
 /*	「予約語or記号』と名前(KeyId)のペア	*/
 struct keyWd {
@@ -27,38 +29,39 @@ struct keyWd {
 };
 
 /*	「予約語or記号』と名前(KeyId)のペアの表	*/
+/*	実際のコードに使用する複合的な記号を定義している	*/
 static struct keyWd KeyWdT[] = {
-	{"begin",Begin},
-	{"end",End},
-	{"if",If},
-	{"then",Then},
-	{"while",While},
-	{"do",Do},
-	{"return",Ret},
-	{"function",Func},
-	{"var",Var},
-	{"const",Const},
-	{"odd",Odd},
-	{"write",Write},
-	{"writeln",WriteLn},
-	{"$dummy1",end_of_KeyWd},
-	{"+",Plus},
-	{"-",Minus},
-	{"*",Mult},
-	{"/",Div},
-	{"(",Lparen},
-	{")",Rparen},
-	{"=",Equal},
-	{"<",Lss},
-	{">",Gtr},
-	{"<>",NotEq},
-	{"<=",LssEq},
-	{">=",GtrEq},
-	{",",Comma},
-	{".",Period},
-	{";",Semicolon},
-	{":=",Assign},
-	{"$dummy2",end_of_KeySym},
+    {"begin", Begin},
+    {"end", End},
+    {"if", If},
+    {"then", Then},
+    {"while", While},
+    {"do", Do},
+    {"return", Ret},
+    {"function", Func},
+    {"var", Var},
+    {"const", Const},
+    {"odd", Odd},
+    {"write", Write},
+    {"writeln", WriteLn},
+    {"$dummy1", end_of_KeyWd},
+    {"+", Plus},
+    {"-", Minus},
+    {"*", Mult},
+    {"/", Div},
+    {"(", Lparen},
+    {")", Rparen},
+    {"=", Equal},
+    {"<", Lss},
+    {">", Gtr},
+    {"<>", NotEq},
+    {"<=", LssEq},
+    {">=", GtrEq},
+    {",", Comma},
+    {".", Period},
+    {";", Semicolon},
+    {":=", Assign},
+    {"$dummy2", end_of_KeySym},
 };
 
 /*	ソースファイルのOpen、.texファイルの作成	*/
@@ -186,7 +189,11 @@ char nextChar() {
 
 /*	次のトークンを読んで返す関数	*/
 Token nextToken() {
+  int i = 0;
+  int num = 0;
   Token temp;
+  KeyId cc;
+  char ident[MAXNAME];
 
   /*	空白、改行カウントの初期化	*/
   spaces = 0;
@@ -199,8 +206,7 @@ Token nextToken() {
     } else if (ch == '\t') {
       spaces += TAB;
     } else if (ch == '\n') {
-      printf("%d行目の空白数:%d\n", CR, spaces);
-      spaces = 0;
+      spaces = -1;
       CR++;
     } else {
       break;
@@ -209,7 +215,64 @@ Token nextToken() {
     /*	次の1文字読み取る	*/
     ch = nextChar();
   }
+
+  /*	文字の種類によって処理を分岐	*/
+  /*	読み取った文字を作成した文字記号表を元にチェック	*/
+  switch (cc = charClassT[ch]) {
+    case letter:
+
+      /*	文字か数字だったら繰り返し読み込む	*/
+      do {
+        /*	1文字目は空白飛ばしの時にすでに読み込んでいるのでそのまま追加*/
+        if (i < MAXNAME) ident[i] = ch;
+        i++;
+        ch = nextChar();
+      } while (charClassT[ch] == letter || charClassT[ch] == digit);
+
+      if (i >= MAXNAME) {
+        //	errorMessage("なげえよ");
+        i = MAXNAME - 1;
+      }
+
+      ident[i] = '\0';
+
+      /*	予約語として登録されているかチェック	*/
+      for (i = 0; i < end_of_KeyWd; i++) {
+        if (strcmp(ident, KeyWdT[i].word) == 0) {
+          temp.kind = KeyWdT[i].keyId;
+          cToken = temp;
+          printed = 0;
+          return temp;
+        }
+      }
+
+      /*	ユーザーが宣言した名前の場合	*/
+      temp.kind = Id;
+      strcpy(temp.u.id, ident);
+
+      break;
+    case digit:
+      num = 0;
+      do {
+        num = 10 * num + (ch - '0');
+        i++;
+        ch = nextChar();
+      } while (charClassT[ch] == digit);
+
+      if (i > MAXNUM) {
+        //	errorMessage("なげえよ");
+      }
+      temp.kind = Num;
+      temp.u.value = num;
+  }
+
   printf("トークンまでの改行数:%d\n", CR);
-  printf("1文字目:%c\n", ch);
+  printf(
+      "トークン番号:%u\n"
+      "トークン名(文字列の場合):%s\n"
+      "トークン値(数字の場合)%d\n",
+      temp.kind, temp.u.id, temp.u.value
+			);
+
   return temp;
 }

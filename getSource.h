@@ -18,7 +18,7 @@ typedef enum keys {
   Write,
   WriteLn,
   end_of_KeyWd, /*	予約語の名前の最後	*/
-  Plus,        /*	演算子と区切り記号の名前	*/
+  Plus,         /*	演算子と区切り記号の名前	*/
   Minus,
   Mult,
   Div,
@@ -49,8 +49,8 @@ typedef enum keys {
 typedef struct token {
   KeyId kind; /*	トークンの種類かキーの名前	*/
   union {
-    char id[MAXNAME]; /*	Identfierの時、その名前	*/
-    int value;        /*	Numの時、その値	*/
+    char id[MAXNAME]; /*	kindがIdの時のその名前(変数名)	*/
+    int value;        /*	Numの時のその値	*/
   } u;
 } Token;
 
