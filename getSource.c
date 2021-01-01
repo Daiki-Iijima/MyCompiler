@@ -150,7 +150,7 @@ static void initCharClassT() {
   charClassT[':'] = colon;
 
   /*	デバッグ	*/
-  DebugCharClassT();
+  // DebugCharClassT();
 }
 
 /*	テーブルの初期設定、texファイルの初期設定	*/
@@ -219,6 +219,7 @@ Token nextToken() {
   /*	文字の種類によって処理を分岐	*/
   /*	読み取った文字を作成した文字記号表を元にチェック	*/
   switch (cc = charClassT[ch]) {
+      /*	===	文字列===  */
     case letter:
 
       /*	文字か数字だったら繰り返し読み込む	*/
@@ -242,15 +243,21 @@ Token nextToken() {
           temp.kind = KeyWdT[i].keyId;
           cToken = temp;
           printed = 0;
+
+          /*	デバッグ	*/
+          printf("予約語:%s\n", ident);
+
           return temp;
         }
       }
 
+      printf("===ユーザー定義===\n");
       /*	ユーザーが宣言した名前の場合	*/
       temp.kind = Id;
       strcpy(temp.u.id, ident);
 
       break;
+      /*	===数値===	*/
     case digit:
       num = 0;
       do {
@@ -264,15 +271,53 @@ Token nextToken() {
       }
       temp.kind = Num;
       temp.u.value = num;
+      break;
+
+      /*	===各種記号の組み合わせパターンと記号のチェック===	*/
+    case colon:
+      if ((ch = nextChar() == '=')) { /*	[:=]チェック	*/
+        ch = nextChar();
+        temp.kind = Assign;
+        break;
+      } else { /*	[:]になる	*/
+        temp.kind = nul;
+        break;
+      }
+    case Lss:
+      if ((ch = nextChar() == '=')) { /*	[<=]チェック	*/
+        ch = nextChar();
+        temp.kind = LssEq;
+      } else if (ch == '>') { /*	[<>]チェック	*/
+        ch = nextChar();
+        temp.kind = NotEq;
+      } else { /*	[<]になる	*/
+        temp.kind = Lss;
+        break;
+      }
+    case Gtr:
+      if ((ch = nextChar() == '=')) { /*	[>=]チェック	*/
+        ch = nextChar();
+        temp.kind = GtrEq;
+        break;
+      } else { /*	[>]になる	*/
+        temp.kind = Gtr;
+        break;
+      }
+    default:
+      temp.kind = cc;
+      ch = nextChar();
+      break;
   }
+
+  cToken = temp; /*	今読み取ったトークンを保存	*/
+  printed = 0;
 
   printf("トークンまでの改行数:%d\n", CR);
   printf(
       "トークン番号:%u\n"
       "トークン名(文字列の場合):%s\n"
       "トークン値(数字の場合)%d\n",
-      temp.kind, temp.u.id, temp.u.value
-			);
+      temp.kind, temp.u.id, temp.u.value);
 
   return temp;
 }
