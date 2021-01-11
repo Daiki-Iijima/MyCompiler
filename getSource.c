@@ -18,9 +18,12 @@ static int lineIndex; /*	次に読む文字の位置	*/
 static char ch;       /*	最後に読んだ文字	*/
 
 static Token cToken; /*	最後に読んだトークン	*/
+static KindT idKind; /*	現トークン(Id)の種類	*/
 static int spaces;   /*	そのトークンの前のスペース個数	*/
 static int CR;       /*	そのトークンの前のCR(改行)の個数	*/
 static int printed;  /*	トークンの文字は印字済みか	*/
+
+static void printcToken(); /*	トークンの印字	*/
 
 /*	「予約語or記号』と名前(KeyId)のペア	*/
 struct keyWd {
@@ -163,6 +166,12 @@ void initSource() {
   initCharClassT();
 
   /*	LaTexコマンド書き込み	*/
+  fprintf(fptex, "\\documentstyle[12pt]{article}\n");
+  fprintf(fptex, "\\begin{document}\n");
+  fprintf(fptex, "\\fbxsep=0pt\n");
+  fprintf(fptex, "\\def\\insert#1{$\\fbox{#1}$}\n");
+  fprintf(fptex, "\\def\\delete#1{$\\fboxrule=.5mm\\fbox{#1}$}\n");
+  fprintf(fptex, "\\rm\n");
 }
 
 /*	次の１文字を読み取って返す	*/
@@ -175,6 +184,8 @@ char nextChar() {
       printf("読み込み文字列:");
       puts(line);
       lineIndex = 0;
+    } else {
+      // errorF("ファイル読み込み終了");
     }
   }
 
@@ -187,6 +198,33 @@ char nextChar() {
   return ch;
 }
 
+/*	トークン読み込みのデバッグ用	*/
+void DebugToken(Token t) {
+  printf("===読み取り===\n");
+  switch (t.kind) {
+    case 18:
+      printf("トークン分類:記号\n");
+      printf("内容:\(\n");
+      break;
+    case 19:
+      printf("トークン分類:記号\n");
+      printf("内容:\)\n");
+      break;
+    case 26:
+      printf("トークン分類:記号\n");
+      printf("内容:,\n");
+      break;
+    case 28:
+      printf("トークン分類:記号\n");
+      printf("内容:;\n");
+      break;
+    case 31:
+      printf("トークン分類:文字列\n");
+      printf("内容:%s\n", t.u.id);
+      break;
+  }
+}
+
 /*	次のトークンを読んで返す関数	*/
 Token nextToken() {
   int i = 0;
@@ -194,6 +232,8 @@ Token nextToken() {
   Token temp;
   KeyId cc;
   char ident[MAXNAME];
+
+  printcToken(); /*	前のトークンを印字	*/
 
   /*	空白、改行カウントの初期化	*/
   spaces = 0;
@@ -245,13 +285,12 @@ Token nextToken() {
           printed = 0;
 
           /*	デバッグ	*/
-          printf("予約語:%s\n", ident);
+          printf("===予約語===:%s\n", ident);
 
           return temp;
         }
       }
 
-      printf("===ユーザー定義===\n");
       /*	ユーザーが宣言した名前の場合	*/
       temp.kind = Id;
       strcpy(temp.u.id, ident);
@@ -312,12 +351,92 @@ Token nextToken() {
   cToken = temp; /*	今読み取ったトークンを保存	*/
   printed = 0;
 
-  printf("トークンまでの改行数:%d\n", CR);
-  printf(
-      "トークン番号:%u\n"
-      "トークン名(文字列の場合):%s\n"
-      "トークン値(数字の場合)%d\n",
-      temp.kind, temp.u.id, temp.u.value);
+  /*	デバッグ表示	*/
+  DebugToken(temp);
 
   return temp;
+}
+
+/* kは予約語か?	*/
+int isKeyWd(KeyId k) { return (k < end_of_KeyWd); }
+/*	kは記号か？	*/
+int isKeySym(KeyId k) {
+  if (k < end_of_KeyWd) return 0;
+  return (k < end_of_KeySym);
+}
+
+/*	t == kのチェックと、不一致の場合の対応	*/
+Token checkGet(Token t, KeyId k) {
+  if (t.kind == k) return nextToken();
+
+  /*	tとkがどちらも記号 or 予約語の場合、
+   *	読み取ったコードの記述ミスと判断して、想定しているワード(k)を
+   *	挿入する
+   */
+  if ((isKeyWd(k) && isKeyWd(t.kind)) || (isKeySym(k) && isKeySym(t.kind))) {
+    // errorDelete();
+    // errorInsert(k);
+    return nextToken();
+  }
+
+  // errorInsert(k);
+  return t;
+}
+
+/*	空白や改行の印字	*/
+static void printSpaces() {
+  while (CR-- > 0) {
+    fprintf(fptex, "\\ \\par\n");
+  }
+
+  while (spaces-- > 0) {
+    fprintf(fptex, "\\ ");
+  }
+
+  CR = 0;
+  spaces = 0;
+}
+
+/*	現在のトークンの印字	*/
+void printcToken() {
+  int i = (int)cToken.kind;
+
+  /*	印字したか printed = 1の場合ここに入る	*/
+  if (printed) {
+    printed = 0;
+    return;
+  }
+
+  printed = 1;
+
+  printSpaces(); /*	トークンの前の空白や改行印字	*/
+
+  if (i < end_of_KeyWd) /*	予約語	*/
+    fprintf(fptex, "{\\bf %s}", KeyWdT[i].word);
+  else if (i < end_of_KeySym) /*	演算子か区切り記号	*/
+    fprintf(fptex, "$%s$", KeyWdT[i].word);
+  else if (i == (int)Id) { /*	Identfier	*/
+    switch (idKind) {
+      case varId:
+        fprintf(fptex, "%s", cToken.u.id);
+        return;
+      case parId:
+        fprintf(fptex, "{\\sl %s}", cToken.u.id);
+        return;
+      case funcId:
+        fprintf(fptex, "{\\it %s}", cToken.u.id);
+        return;
+      case constId:
+        fprintf(fptex, "{\\sf %s}", cToken.u.id);
+        return;
+    }
+  } else if (i == (int)Num) { /* Num	*/
+    fprintf(fptex, "%d", cToken.u.value);
+  }
+}
+
+/*	現トークン(Id)の種類をセット	*/
+void setIdKind(KindT k) {
+  printf("ID:%u\n", k);
+  idKind = k;
 }
