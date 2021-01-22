@@ -1,14 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h> /*exit(1)を実装するためだけに使用*/
 #include <string.h>
 
 #include "getSource.h"
 
 #define MAXLINE 120 /*	1行の最大文字数	*/
+#define MAXERROR 30 /*	エラーがこれ以上あったら終わり	*/
 #define MAXNUM 30   /*	定数の最大桁数	*/
-#define TAB 5;
-
-#define STR(var) \
-#var /*	引数にした変数を変数名を示す文字リテラルとして返すマクロ */
+#define TAB 5;      /*	タブのスペース	*/
 
 static FILE *fpi;          /*	ソースファイル	*/
 static FILE *fptex;        /*	LaTex出力ファイル	*/
@@ -23,7 +22,12 @@ static int spaces;   /*	そのトークンの前のスペース個数	*/
 static int CR;       /*	そのトークンの前のCR(改行)の個数	*/
 static int printed;  /*	トークンの文字は印字済みか	*/
 
-static void printcToken(); /*	トークンの印字	*/
+static int errorNo = 0;       /*	出力したエラー数	*/
+static char nextChar();       /*	次の文字を読み込む関数	*/
+static int isKeySym(KeyId k); /*	tは記号か？	*/
+static int isKeyWd(KeyId k);  /*	tは予約語か？	*/
+static void printSpaces();    /*	トークンの前のスペースの印字*/
+static void printcToken();    /*	トークンの印字	*/
 
 /*	「予約語or記号』と名前(KeyId)のペア	*/
 struct keyWd {
@@ -174,6 +178,81 @@ void initSource() {
   fprintf(fptex, "\\rm\n");
 }
 
+/*	エラーの個数のカウントを行い、多い場合コンパイルを中断	*/
+void errorNoCheck() {
+  if (errorNo++ > MAXERROR) {
+    fprintf(fptex, "エラーが多すぎます。\n \\end{document}\n");
+    printf("コンパイルを中断します。");
+    exit(1);
+  }
+}
+
+/*	型エラーを出力	*/
+void errorType(char *m) {
+  printSpaces();
+  fprintf(fptex, "\\(\\stackrel{\\mbox{\\scriptsize %s}}{\\mbox{", m);
+  printcToken();
+  fprintf(fptex, "}}\\)");
+  errorNoCheck();
+}
+
+/*	記述ミスらしい部分を出力	*/
+void errorInsert(KeyId k) {
+  if (k < end_of_KeyWd) /*予約語*/
+    fprintf(fptex, "\\ \\insert{{\\bf %s}}", KeyWdT[k].word);
+  else /*演算子か区切り記号*/
+    fprintf(fptex, "\\ \\insert{$%s$}", KeyWdT[k].word);
+
+  errorNoCheck();
+}
+/*	変数名が見つからないことを出力	*/
+void errorMissingId() {
+  fprintf(fptex, "\\insert{Id}");
+  errorNoCheck();
+}
+
+/*	演算子が見つからないことを出力	*/
+void errorMissingOp() {
+  fprintf(fptex, "\\insert{$\\otimes$}");
+  errorNoCheck();
+}
+
+/*今読んだトークンを読み捨てたことを出力	*/
+void errorDelete() {
+  int i = (int)cToken.kind;
+
+  printSpaces();
+  printed = 1;
+
+  if (i < end_of_KeyWd) /*	予約語の場合	*/
+    fprintf(fptex, "\\delete{{\\bf %s}}", KeyWdT[i].word);
+  else if (i < end_of_KeySym) /*	演算子or区切り文字*/
+    fprintf(fptex, "\\delete{$%s$}", KeyWdT[i].word);
+  else if (i == (int)Id) /*Identfier*/
+    fprintf(fptex, "\\delete{%s}", cToken.u.id);
+  else if (i == (int)Num) /*Num*/
+    fprintf(fptex, "\\delete{%d}", cToken.u.value);
+}
+
+/*	エラーメッセージを出力	*/
+void errorMessage(char *m) {
+  fprintf(fptex, "$^{%s}$", m);
+  errorNoCheck();
+}
+/*	エラーメッセージを出力して、コンパイル終了	*/
+void errorF(char *m) {
+  errorMessage(m);
+  fprintf(fptex, "fatal errors\n\\end{document}\n");
+  if (errorNo) {
+    printf("エラー数 : %d", errorNo);
+  }
+  printf("コンパイル中断\n");
+  exit(1);
+}
+
+/*	エラーの個数を返す	*/
+int errorN() { return errorNo; }
+
 /*	次の１文字を読み取って返す	*/
 char nextChar() {
   char ch;
@@ -306,8 +385,9 @@ Token nextToken() {
       } while (charClassT[ch] == digit);
 
       if (i > MAXNUM) {
-        //	errorMessage("なげえよ");
+        //	errorMessage("なげい");
       }
+
       temp.kind = Num;
       temp.u.value = num;
       break;
@@ -349,6 +429,8 @@ Token nextToken() {
   }
 
   cToken = temp; /*	今読み取ったトークンを保存	*/
+  /*	次トークン読み取りがきた時に
+   *	.texファイルに出力できるようにフラグ設定	*/
   printed = 0;
 
   /*	デバッグ表示	*/
